@@ -1,56 +1,88 @@
 # Canvas Headless POC
 
-Drupal Canvas 1.12 + the experimental `canvas_headless` submodule, with a
-Next.js frontend scaffolded from `drupal-canvas/headless-templates`.
+Drupal Canvas (experimental `canvas_headless` submodule, Canvas ≥ 1.12) with a
+Next.js frontend rendering Canvas pages, including live draft preview in the
+Canvas editor.
 
-```
-drupal/    DDEV Drupal 11 site  -> https://canvas-headless-poc.ddev.site
-frontend/  Next.js app          -> http://localhost:3000
-```
+- Drupal: `drupal/` → https://canvas-headless-poc.ddev.site
+- Frontend: `frontend/` → http://localhost:3000
 
-## Start
+Requires DDEV, mkcert, Node 22.19+ or 24.5+ (not 23), and **Chrome** (the
+preview cookie is refused by Firefox/Safari over plain-http localhost).
+
+## Setup
+
+### 1. Drupal
 
 ```bash
-cd ~/ddev/canvas-headless-poc/drupal && ddev start
-cd ~/ddev/canvas-headless-poc/frontend && npm run dev
-ddev drush -r ~/ddev/canvas-headless-poc/drupal uli /canvas   # admin login link
+cd drupal
+ddev start
+ddev composer install
+ddev drush si standard --account-name=admin --account-pass=admin -y
+ddev drush en canvas canvas_headless canvas_oauth -y
 ```
 
-Use Chrome: over plain-http `localhost` the draft preview relies on partitioned
-cookies, which Firefox/Safari refuse.
+### 2. Simple OAuth keys (signs preview tokens; gitignored)
 
-## What was set up
+```bash
+mkdir -p keys
+openssl genrsa -out keys/private.key 2048
+openssl rsa -in keys/private.key -pubout -out keys/public.key
+chmod 600 keys/*.key
+ddev drush cset simple_oauth.settings private_key /var/www/html/keys/private.key -y
+ddev drush cset simple_oauth.settings public_key /var/www/html/keys/public.key -y
+```
 
-Drupal (`drupal/`):
-- `drupal/canvas:^1.12`, `simple_oauth:^6.1`, `consumers`, `custom_elements`
-- Enabled: `canvas`, `canvas_headless`, `canvas_oauth`
-- Simple OAuth RSA keypair in `drupal/keys/` (local only, never commit)
-- `canvas_headless.settings:frontends` = `http://localhost:3000`
-  (Canvas UI: left rail > **Headless frontends**)
-- OAuth consumer `cli` / `secret` (client_credentials, `canvas:js_component`,
-  `canvas:asset_library`, `canvas:brand_kit`) for the Canvas CLI
-- Demo: Canvas page 1 (`/page/1`) with a Hero component, published
+### 3. Register the frontend
 
-Frontend (`frontend/`):
-- `npx @drupal-canvas/create@latest frontend --template nextjs --site-url https://canvas-headless-poc.ddev.site --agents none`
-- `npm run dev` exports `NODE_EXTRA_CA_CERTS` (mkcert root) so Node trusts the
-  DDEV HTTPS cert when calling Drupal server-side.
+```bash
+ddev drush php:eval '\Drupal::configFactory()->getEditable("canvas_headless.settings")->set("frontends", [["url" => "http://localhost:3000", "components" => []]])->save();'
+```
 
-## How it fits together
+Or in Canvas: left rail → **Headless frontends** → **Add frontend**.
 
-1. Canvas probes `http://localhost:3000/api/canvas/components` from the browser
-   (401 = "Ready").
-2. Opening the editor mints a single-use JWT assertion; the iframe loads
-   `/api/draft?assertion=...`, which exchanges it at Drupal `/oauth/token` for a
-   user-bound, read-only preview token (partitioned cookie).
-3. Same load syncs the app's `components/*/component.yml` into Canvas as
-   `js.*` components (stored on the frontend entry in config).
-4. The catch-all route calls `GET /canvas/content-api?requestUri=/page/1` and
-   renders the tree via `<CanvasComponentTree>`.
+### 4. Frontend
 
-Add a component: `cd frontend && npx canvas scaffold --name my-hero`, set
-`machineName: my-hero` and `status: true` in its `component.yml`, reload the
-editor.
+```bash
+cd ../frontend
+cp .env.example .env   # set CANVAS_SITE_URL=https://canvas-headless-poc.ddev.site
+npm install
+npm run dev            # dev script sets NODE_EXTRA_CA_CERTS to the mkcert root
+```
 
-Docs: `drupal/web/modules/contrib/canvas/modules/canvas_headless/README.md` and
-`drupal/web/modules/contrib/canvas/docs/user/src/content/docs/headless/`.
+### 5. Try it
+
+```bash
+cd ../drupal && ddev drush uli /canvas
+```
+
+1. **Headless frontends** should show `http://localhost:3000` as **Ready**.
+2. Page menu (top center) → **New** → **New page**. Opening the editor syncs
+   the app's components into the library and loads the preview from Next.js.
+3. Library → Hero → `⋯` → **Insert**, edit props, **Review changes** → **Publish**.
+4. View it on the frontend: http://localhost:3000/page/1
+
+If the preview area is blank grey, click the fit-to-view icon by the zoom menu.
+
+## Optional: Canvas CLI credentials
+
+Only needed for `npx canvas ...` commands (`CANVAS_CLIENT_ID`/`SECRET` in `.env`):
+
+```bash
+ddev drush php:eval '\Drupal::entityTypeManager()->getStorage("consumer")->create(["label" => "Canvas CLI", "client_id" => "cli", "secret" => "secret", "confidential" => TRUE, "grant_types" => ["client_credentials"], "scopes" => ["canvas_js_component", "canvas_asset_library", "canvas_brand_kit"], "user_id" => 1])->save();'
+```
+
+## Add a component
+
+```bash
+cd frontend && npx canvas scaffold --name my-hero
+```
+
+In its `component.yml` set `machineName: my-hero` and `status: true`, then
+reload the Canvas editor.
+
+## References
+
+- Module README: `drupal/web/modules/contrib/canvas/modules/canvas_headless/README.md`
+- Setup guide: `drupal/web/modules/contrib/canvas/docs/user/src/content/docs/headless/setup.mdx`
+- Templates: https://github.com/drupal-canvas/headless-templates
