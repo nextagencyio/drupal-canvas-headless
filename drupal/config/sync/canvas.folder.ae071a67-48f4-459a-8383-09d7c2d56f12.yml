@@ -1,0 +1,11 @@
+uuid: ae071a67-48f4-459a-8383-09d7c2d56f12
+langcode: en
+status: true
+dependencies:
+  config:
+    - canvas.component.block.help_block
+name: Help
+configEntityTypeId: component
+weight: 0
+items:
+  - block.help_block

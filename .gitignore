@@ -1,0 +1,23 @@
+# Drupal (composer-managed)
+/drupal/vendor/
+/drupal/web/core/
+/drupal/web/modules/contrib/
+/drupal/web/themes/contrib/
+/drupal/web/profiles/contrib/
+/drupal/web/libraries/
+/drupal/recipes/
+/drupal/web/sites/*/files/
+/drupal/web/sites/*/settings.local.php
+/drupal/web/sites/*/settings.ddev.php
+
+# OAuth keypair: local only
+/drupal/keys/
+
+# Frontend
+/frontend/node_modules/
+/frontend/.next/
+/frontend/.env
+/frontend/next-env.d.ts
+
+.DS_Store
+*.log
